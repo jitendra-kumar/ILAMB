@@ -1457,6 +1457,9 @@ class Variable:
             if type(axes) == int: axes = (int(axes),)
             axes = tuple(axes)
             n    = 1
+            print("Within correlation")
+            print(axes)
+            print(n)
             for ax in axes: n *= x.shape[ax]
             xbar = x.sum(axis=axes)/n # because np.mean() doesn't take axes which are tuples
             ybar = y.sum(axis=axes)/n
@@ -1617,6 +1620,100 @@ class Variable:
         rmse.name = rmse.name.replace("_integrated_over_time_and_divided_by_time_period","")
         rmse.data = np.sqrt(rmse.data)
         return rmse
+
+    def kge(self,var):
+        """Computes the Kling-Gupta Efficiency (KGE) between a given variable and this variable.
+
+        Parameters
+        ----------
+        var : ILAMB.Variable.Variable
+            The variable with which we will measure KGE
+
+        Returns
+        -------
+        KGE : ILAMB.Variable.Variable
+            the KGE
+
+        """
+        # If not a temporal variable, then we assume that the user is
+        # passing in mean data and return the difference.
+        lat,lon,area = self.lat,self.lon,self.area
+        print("Variable: self")
+        print(self)
+        print("Variable: var")
+        print(var)
+        if not self.temporal:
+            assert self.temporal == var.temporal
+            kge = self.spatialDifference(var)
+            kge.name = "kge_of_%s" % self.name
+            return kge
+        if self.spatial:
+            # If the data is spatial, then we interpolate it on a
+            # common grid and take the difference.
+            same_grid = False
+            try:
+                same_grid = np.allclose(self.lat,var.lat)*np.allclose(self.lon,var.lon)
+            except:
+                pass
+            if not same_grid:
+                lat,lon  = il.ComposeSpatialGrids(self,var)
+                area     = None
+                self_int = self.interpolate(lat=lat,lon=lon)
+                var_int  = var .interpolate(lat=lat,lon=lon)
+#                cc       = self_int.correlation(var_int,ctype="temporal")
+#                cc1       = np.corrcoef(self_int.data, var_int.data)
+#                cc       = np.diag(cc1)
+                X        = (self_int.data - self_int.data.mean(axis=0)) / self_int.data.std(axis=0)
+                Y        = (var_int.data - var_int.data.mean(axis=0)) / var_int.data.std(axis=0)
+                pearson_r = np.diag(np.dot(X.T, Y) / X.shape[0])
+                alpha    = self_int.data.std() / var_int.data.std()
+                beta     = self_int.data.mean() / var_int.data.mean()
+                data     = 1 - np.sqrt((pearson_r - 1)**2 + (alpha - 1)**2 + (beta - 1)**2)
+                mask     = var_int.data.mask+self_int.data.mask
+            else:
+#                cc       = self.correlation(var,ctype="temporal")
+#                cc1       = np.corrcoef(self.data, var.data)
+#                cc       = np.diag(cc1)
+                X        = (self.data - self.data.mean(axis=0)) / self.data.std(axis=0)
+                Y        = (var.data - var.data.mean(axis=0)) / var.data.std(axis=0)
+                pearson_r = np.diag(np.dot(X.T, Y) / X.shape[0])
+                alpha    = self.data.std() / var.data.std()
+                beta     = self.data.mean() / var.data.mean()
+                data     = 1 - np.sqrt((pearson_r - 1)**2 + (alpha - 1)**2 + (beta - 1)**2)
+                mask     = var.data.mask+self.data.mask
+        elif (self.ndata or self.time.size == self.data.size):
+            # If the data are at sites, then take the difference
+#            cc       = self.correlation(var,ctype="temporal")
+#            cc1       = np.corrcoef(self.data, var.data)
+#            cc       = np.diag(cc1)
+            X        = (self.data - self.data.mean(axis=0)) / self.data.std(axis=0)
+            Y        = (var.data - var.data.mean(axis=0)) / var.data.std(axis=0)
+            pearson_r = np.diag(np.dot(X.T, Y) / X.shape[0])
+            alpha    = self.data.std() / var.data.std()
+            beta     = self.data.mean() / var.data.mean()
+            data     = 1 - np.sqrt((pearson_r - 1)**2 + (alpha - 1)**2 + (beta - 1)**2)
+            mask     = var.data.mask*self.data.mask
+        else:
+            raise il.NotSpatialVariable("Cannot take kge of scalars")
+        print("corr")
+        print(pearson_r.shape)
+        print(pearson_r)
+        print(len(var.data.mask))
+        print(len(self.data.mask))
+#        print("Data: %f var.data %d self.data %d cc %f"%(data, len(var.data.mask), len(self.data.mask), cc))
+#        print("Data: %f var.data %d self.data %d"%(cc, len(var.data.mask), len(self.data.mask)))
+        # Finally we return the spatial mean of the kge 
+        np.seterr(over='ignore',under='ignore')
+        np.seterr(over='raise',under='raise')
+#        kge = Variable(data=np.ma.masked_array(data,mask=mask),
+        kge = Variable(data=data,
+                        name="kge_of_%s" % self.name,time=self.time,time_bnds=self.time_bnds,
+                        unit=self.unit,ndata=self.ndata,
+                        lat=lat,lon=lon,area=area,
+                        depth_bnds = self.depth_bnds)
+        kge.name = kge.name.replace("_integrated_over_time_and_divided_by_time_period","")
+        return kge
+
 
     def rms(self):
         """Computes the RMS of this variable.

@@ -153,6 +153,18 @@ class ConfBasin(Confrontation):
         # datasites and only the global region
         obs_timeint     = obs.integrateInTime(mean=True)
         mod_timeint     = mod.integrateInTime(mean=True)
+        obs_anom        = obs.rms()
+        rmse            = obs.rmse(mod).convert(obs.unit)
+        rmse_val        = rmse.siteStats()
+        kge            = obs.kge(mod).convert(obs.unit)
+        kge_val        = kge.siteStats()
+#        rmse_smap       = Variable(name = "",
+#                                unit = "1",
+#                                data = np.exp(-rmse.data/obs_anom.data),
+#                                ndata = obs.ndata,
+#                                lat   = obs.lat,
+#                                lon   = obs.lon)
+#        rmse_score      = rmse_smap.siteStats()
         bias_map        = obs_timeint.bias(mod_timeint)
         normalizer      = obs_timeint.data
         bias_score_map  = il.Score(bias_map,obs_timeint)
@@ -172,6 +184,9 @@ class ConfBasin(Confrontation):
         obs_timeint     = self._extendSitesToMap(obs_timeint, omod)
         mod_timeint     = self._extendSitesToMap(mod_timeint, omod)
         bias_map        = self._extendSitesToMap(bias_map, omod)
+        rmse_map     = self._extendSitesToMap(rmse, omod)
+        kge_map     = self._extendSitesToMap(kge, omod)
+#        rmse_smap    = self._extendSitesToMap(rmse_smap)
 
         # Rename some quantities for parsing later in the HTML
         # generation
@@ -184,6 +199,12 @@ class ConfBasin(Confrontation):
         mod_timeint    .name = "timeint_of_runoff"
         bias_map       .name = "bias_map_of_runoff"
         iav_score      .name = "Interannual Variability Score global"
+        rmse_map       .name = "rmse_of_anomaly"
+        kge_map       .name = "kge_of_anomaly"
+#        rmse_smap      .name = "rmsescore_of_anomaly"
+        rmse_val       .name = "RMSE global"
+        kge_val       .name = "KGE global"
+#        rmse_score     .name = "RMSE Score global"
 
         # Dump to files
         results = Dataset(os.path.join(self.output_path,"%s_%s.nc" % (self.name,m.name)),mode="w")
@@ -194,7 +215,14 @@ class ConfBasin(Confrontation):
                     bias,
                     bias_score,
                     bias_map,
-                    iav_score]:
+                    iav_score,
+		            rmse_map,
+		            kge_map,
+#		            rmse_smap,
+		            rmse_val,
+		            kge_val,
+#		            rmse_score
+		           ]:
             var.toNetCDF4(results,group="MeanState")
         sd_score.toNetCDF4(results,group="MeanState",attributes={"std":std.data,"R":R.data})
         results.setncattr("complete",1)
